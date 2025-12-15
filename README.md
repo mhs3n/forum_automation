@@ -1,120 +1,78 @@
-# Cua Agent Template
+# CUA Form-Fill Workflow (Opus 4.5)
 
-Welcome! This template helps you get started with the **Cua SDK** - a powerful framework for building AI agents that can interact with computers and automate tasks.
+This repo now focuses on a single flow: use Claude Opus 4.5 with CUA’s computer interface to extract screen coordinates, run a deterministic macro to fill the DRG Webgrouper form, and (optionally) verify/fix before submitting.
 
-**Note**: This template will walk through a **cloud** based run. If you want to change this to local, please visit the [Quickstart](https://docs.cua.ai/docs/quickstart-devs).
+## What’s included
+- `scripts/llm_coord_macro_onepass.py` – one-pass pipeline (builder → macro fill → verify/fix → submit).
+- `scripts/llm_macro_builder.py` – builder-only (extract coords JSON).
+- `scripts/coord_macro_runner.py` – deterministic filler using coords + payload JSON.
+- `data/payload.json` – sample input payload.
 
-## What does this template do?
+Legacy example files were removed; `main.py` remains untouched (not used in this flow).
 
-This example demonstrates how to use the **ComputerAgent** with OpenAI's computer-use model to:
+## Prereqs
+- Docker desktop running the CUA XFCE image and API on host mode (example):  
+  `docker run --rm --name cua-desktop -p 8000:8000 -p 8006:6901 local/cua-xfce:latest`
+- noVNC at `http://localhost:8006` (password `password`) for visual check.
+- `.env` with:
+  - `CUA_PROVIDER=host`
+  - `CUA_HOST=127.0.0.1`
+  - `CUA_PORT=8000`
+  - `CUA_MODEL=anthropic/claude-opus-4-5-20251101`
+  - `ANTHROPIC_API_KEY=<your key>` (BYOK)
+- Venv activated: `. .venv/bin/activate`
+- You may need a slightly higher delay for stability (default 0.35s).
 
-- Automate web interactions (visiting websites, downloading files)
-- Fill out forms automatically using information from documents
-- Run tasks on a cloud-based Linux virtual machine
+## One-pass run (recommended)
+```bash
+python scripts/llm_coord_macro_onepass.py \
+  --url "https://www.drg-research-group.de/index.php?option=com_webgrouper&view=webgrouper&Itemid=112" \
+  --data data/payload.json \
+  --coords-out data/coords_generated.json
+```
+Behavior:
+- Builder (LLM, ≤2 screenshots): zooms to ~80%, stabilizes scroll, emits per-cell coords JSON; no filling.
+- Macro (CUA): fills using coords + payload, clears each field (Ctrl+A + backspace/delete) before typing. Tab-walk is enabled by default:
+  - Click gender, type, Enter to confirm, then Tab through remaining scalar fields.
+  - Diagnoses: click first cell, type each diagnosis, Tab between cells.
+  - Procedures: click first code cell, type code, Tab, type date, Tab to next row.
+- Submit is deferred until verify passes.
+- Verify (default 10 steps): read-only check. If mismatches, LLM returns `FIX_ACTIONS`; the script applies fixes and re-verifies once, then submits. Set `--verify-steps 0` to skip verify (no auto-submit).
 
-The agent can see your screen, control your mouse and keyboard, and make intelligent decisions about how to complete tasks - just like a human would!
+Key flags:
+- `--tab-walk / --no-tab-walk` (default tab-walk on for scalar fields).
+- `--delay` (default 0.35).
+- `--verify-steps` (default 10; set 0 to skip).
 
-## 🚀 Quick Start
-
-### Prerequisites
-
-Before you begin, you'll need:
-
-- A **Cua account** and active sandbox
-- An **OpenAI API key** with access to the computer-use model
-- **uv** package manager (we'll help you install it if needed)
-
-### Step 1: Set up your environment
-
-1. **Clone this repository:**
-
+## Builder + manual fill (if you want to separate steps)
+1) Builder only:  
    ```bash
-   git clone https://github.com/trycua/agent-template.git
-   cd agent-template
+   python scripts/llm_macro_builder.py \
+     --url "https://www.drg-research-group.de/index.php?option=com_webgrouper&view=webgrouper&Itemid=112" \
+     --data data/payload.json \
+     --out data/coords_generated.json
    ```
-
-2. **Copy the environment template:**
-
+2) Fill with deterministic macro:  
    ```bash
-   cp .env.example .env
+   python scripts/coord_macro_runner.py \
+     --data data/payload.json \
+     --coords data/coords_generated.json \
+     --delay 0.35
    ```
+(This path skips verify/submit; run a verifier separately if needed.)
 
-3. **Start your virtual machine:**
+## Field handling details
+- Clearing: every field is cleared before typing (Ctrl+A, backspace, delete).
+- Dropdowns: typed by default (per your preference). Gender seed confirms with Enter before tab-walk.
+- Diagnoses/procedures/dates: tab-walked cell-by-cell; requires correct coords for the first cells.
+- Submit: only clicked after a clean verify (or verify skipped).
 
-   - Go to [Cua Dashboard](https://www.cua.ai/dashboard/sandboxes)
-   - Make sure your sandbox is running (you'll see a green status indicator)
+## Troubleshooting tips
+- If coords are wrong, rerun the builder (it must keep a stable zoom/scroll).
+- If tab order differs, use `--no-tab-walk` to fill scalar fields by per-field coords.
+- If entries concatenate, raise `--delay` (e.g., `--delay 0.5`).
+- If verification cost is a concern, set `--verify-steps 0` and submit manually.
 
-4. **Configure your API keys:**
-
-   - Open the `.env` file in your favorite editor
-   - Fill in your `CUA_API_KEY`, `CUA_SANDBOX_NAME`, and `OPENAI_API_KEY`
-   - Save the file
-
-5. **Install dependencies:**
-   ```bash
-   uv sync
-   ```
-
-### Step 2: Run your first agent! 🎉
-
-You can run the agent in two ways:
-
-**Option 1: Direct run (recommended for beginners)**
-
-```bash
-uv run python main.py
-```
-
-**Option 2: Traditional virtual environment**
-
-```bash
-source .venv/bin/activate
-python main.py
-```
-
-## 📦 Installing uv (if you don't have it)
-
-**macOS/Linux:**
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-**Windows:**
-
-```bash
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-**Alternative (using pip):**
-
-```bash
-pip install uv
-```
-
-## 🛠️ Customizing Your Agent
-
-Want to try different models or tasks? Here are some ideas:
-
-- **Switch models:** Check out [supported model providers](https://docs.cua.ai/docs/agent-sdk/supported-model-providers) for options like Claude, UI-TARS, or local models
-- **Change tasks:** Modify the `tasks` list in `main.py` to automate different workflows
-- **Local development:** Switch to a **free** local macOS computer for testing (see commented code in `main.py`), find resources on local development: https://docs.cua.ai/docs/quickstart-devs
-
-## 🆘 Need Help?
-
-We're here to help you succeed!
-
-- 📚 **[Documentation](https://docs.cua.ai/docs)** - Comprehensive guides and examples
-- 💬 **[Discord Community](https://discord.com/invite/mVnXXpdE85)** - Get support from our team and other developers
-- 🔧 **[GitHub Repository](https://github.com/trycua/cua)** - Source code, issues, and contributions
-
-## 🎯 What's Next?
-
-Once you've got this example running, try:
-
-- Building your own custom agents
-- Integrating with your existing workflows
-- Exploring advanced features like multi-agent systems
-- Contributing to the open-source community
-
-Happy automating, feel free to leave us a star if you liked this! 🚀
+## Current status
+- LLM builds the macro plan (coords/fixes). All clicks/typing are executed via the CUA computer interface.
+- Submit is gated on verification success to avoid bad runs. Use flags to tune tab-walk and delays per environment. 

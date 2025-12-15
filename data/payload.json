@@ -1,0 +1,30 @@
+{
+  "age": 64,
+  "gender": "M",
+  "age_type": "J",
+  "base_rate": 4384.9,
+  "diagnoses": [
+    "I80.28",
+    "M62.89",
+    "I10.00",
+    "E78.5",
+    "E79.0",
+    "E04.2"
+  ],
+  "procedures": [
+    "3-035:l",
+    "3-806:l"
+  ],
+  "drg_version": "76",
+  "admission_type": "01",
+  "discharge_type": "01",
+  "length_of_stay": 3,
+  "department_type": "1",
+  "procedure_dates": [
+    "22.11.2025",
+    "24.11.2025"
+  ],
+  "admission_reason": "N",
+  "admission_weight": 0,
+  "ventilation_time": 0
+}
