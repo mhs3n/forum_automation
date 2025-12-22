@@ -1,0 +1,109 @@
+{
+  "fields": [
+    {
+      "key": "gender",
+      "x": 800,
+      "y": 371
+    },
+    {
+      "key": "age",
+      "x": 210,
+      "y": 371
+    },
+    {
+      "key": "age_type",
+      "x": 510,
+      "y": 371
+    },
+    {
+      "key": "admission_weight",
+      "x": 210,
+      "y": 429
+    },
+    {
+      "key": "ventilation_time",
+      "x": 210,
+      "y": 429
+    },
+    {
+      "key": "length_of_stay",
+      "x": 865,
+      "y": 641
+    },
+    {
+      "key": "department_type",
+      "x": 365,
+      "y": 641
+    },
+    {
+      "key": "admission_type",
+      "x": 400,
+      "y": 525
+    },
+    {
+      "key": "admission_reason",
+      "x": 755,
+      "y": 525
+    },
+    {
+      "key": "discharge_type",
+      "x": 400,
+      "y": 583
+    },
+    {
+      "key": "diagnoses",
+      "x": 153,
+      "y": 738
+    },
+    {
+      "key": "procedures",
+      "x": 153,
+      "y": 543
+    },
+    {
+      "key": "procedure_dates",
+      "x": 857,
+      "y": 543
+    },
+    {
+      "key": "drg_version",
+      "x": 260,
+      "y": 275
+    },
+    {
+      "key": "base_rate",
+      "x": 180,
+      "y": 691
+    }
+  ],
+  "diagnosis_add_button": {
+    "x": 833,
+    "y": 453
+  },
+  "procedure_add_button": {
+    "x": 833,
+    "y": 601
+  },
+  "diagnosis_cells": [
+    {
+      "x": 153,
+      "y": 738
+    }
+  ],
+  "procedure_rows": [
+    {
+      "code": {
+        "x": 153,
+        "y": 543
+      },
+      "date": {
+        "x": 857,
+        "y": 543
+      }
+    }
+  ],
+  "submit": {
+    "x": 181,
+    "y": 743
+  }
+}

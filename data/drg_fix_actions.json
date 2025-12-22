@@ -1,0 +1,14 @@
+{
+  "fields": [],
+  "diagnoses": [
+    {
+      "index": 0,
+      "value": "I80.28"
+    },
+    {
+      "index": 1,
+      "value": "M62.89"
+    }
+  ],
+  "procedures": []
+}

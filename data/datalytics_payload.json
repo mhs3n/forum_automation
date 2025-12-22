@@ -1,0 +1,37 @@
+{
+  "gender": "M",
+  "age": 89,
+  "age_type": "J",
+  "admission_weight": 0,
+  "ventilation_time": 0,
+  "length_of_stay": 6,
+  "department_type": "1",
+  "admission_type": "01",
+  "admission_reason": "N",
+  "discharge_type": "01",
+  "diagnoses": [
+    "K25.0",
+    "D69.58",
+    "D68.35",
+    "D62",
+    "E11.90",
+    "I10.00",
+    "K31.81",
+    "Z86.7",
+    "Z92.1"
+  ],
+  "procedures": [
+    "8-800.c0",
+    "8-930",
+    "1-632.0",
+    "1-440.a"
+  ],
+  "procedure_dates": [
+    "02.12.2025",
+    "02.12.2025",
+    "03.12.2025",
+    "03.12.2025"
+  ],
+  "drg_version": "76",
+  "base_rate": 4502.67
+}

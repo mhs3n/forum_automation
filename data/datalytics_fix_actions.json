@@ -1,0 +1,76 @@
+{
+  "fields": [
+    {
+      "key": "age",
+      "value": "89"
+    },
+    {
+      "key": "admission_reason",
+      "value": "N"
+    },
+    {
+      "key": "admission_type",
+      "value": "01"
+    },
+    {
+      "key": "discharge_type",
+      "value": "01"
+    }
+  ],
+  "diagnoses": [
+    {
+      "index": 1,
+      "value": "D69.58"
+    },
+    {
+      "index": 2,
+      "value": "D68.35"
+    },
+    {
+      "index": 3,
+      "value": "D62"
+    },
+    {
+      "index": 4,
+      "value": "E11.90"
+    },
+    {
+      "index": 5,
+      "value": "I10.00"
+    },
+    {
+      "index": 6,
+      "value": "K31.81"
+    },
+    {
+      "index": 7,
+      "value": "Z86.7"
+    },
+    {
+      "index": 8,
+      "value": "Z92.1"
+    }
+  ],
+  "procedures": [
+    {
+      "index": 0,
+      "code": "8-800.c0",
+      "date": "02.12.2025"
+    },
+    {
+      "index": 1,
+      "code": "8-930",
+      "date": "02.12.2025"
+    },
+    {
+      "index": 2,
+      "code": "1-632.0",
+      "date": "03.12.2025"
+    },
+    {
+      "index": 3,
+      "code": "1-440.a",
+      "date": "03.12.2025"
+    }
+  ]
+}

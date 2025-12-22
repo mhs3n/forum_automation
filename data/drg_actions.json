@@ -1,0 +1,92 @@
+{
+  "actions": [
+    {
+      "op": "field",
+      "key": "gender"
+    },
+    {
+      "op": "field",
+      "key": "age"
+    },
+    {
+      "op": "field",
+      "key": "age_type"
+    },
+    {
+      "op": "field",
+      "key": "admission_weight"
+    },
+    {
+      "op": "field",
+      "key": "ventilation_time"
+    },
+    {
+      "op": "field",
+      "key": "length_of_stay"
+    },
+    {
+      "op": "field",
+      "key": "department_type"
+    },
+    {
+      "op": "field",
+      "key": "admission_type"
+    },
+    {
+      "op": "field",
+      "key": "admission_reason"
+    },
+    {
+      "op": "field",
+      "key": "discharge_type"
+    },
+    {
+      "op": "field",
+      "key": "base_rate"
+    },
+    {
+      "op": "field",
+      "key": "drg_version"
+    },
+    {
+      "op": "diagnosis",
+      "index": 0
+    },
+    {
+      "op": "diagnosis",
+      "index": 1
+    },
+    {
+      "op": "diagnosis",
+      "index": 2
+    },
+    {
+      "op": "diagnosis",
+      "index": 3
+    },
+    {
+      "op": "diagnosis",
+      "index": 4
+    },
+    {
+      "op": "diagnosis",
+      "index": 5
+    },
+    {
+      "op": "procedure_code",
+      "index": 0
+    },
+    {
+      "op": "procedure_date",
+      "index": 0
+    },
+    {
+      "op": "procedure_code",
+      "index": 1
+    },
+    {
+      "op": "procedure_date",
+      "index": 1
+    }
+  ]
+}

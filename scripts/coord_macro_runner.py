@@ -70,6 +70,16 @@ async def run_macro(
     fields: List[Dict[str, Any]] = coords.get("fields", [])
     submit: Optional[Dict[str, Any]] = coords.get("submit")
 
+    async def clear_field() -> None:
+        await iface.press("ctrl+a")
+        await asyncio.sleep(delay * 0.2)
+        for _ in range(10):
+            await iface.press("backspace")
+            await asyncio.sleep(delay * 0.05)
+        for _ in range(10):
+            await iface.press("delete")
+            await asyncio.sleep(delay * 0.05)
+
     for field in fields:
         key = field.get("key")
         x = field.get("x")
@@ -82,6 +92,7 @@ async def run_macro(
         print(f"[macro] {key} -> click ({x},{y}), type '{text}'")
         await iface.left_click(int(x), int(y))
         await asyncio.sleep(delay)
+        await clear_field()
         if text:
             await iface.type_text(text)
         await asyncio.sleep(delay)

@@ -22,7 +22,7 @@ import logging
 import os
 import re
 import sys
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 from agent import ComputerAgent
 from computer import Computer
@@ -110,6 +110,9 @@ def build_verify_messages(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "Verify the form submission/result reflects the provided data. "
                 "Use minimal screenshots (<=2). Do NOT edit anything. "
                 "If everything matches, say 'OK'. "
+                "Treat 'G-DRG 2025' as matching drg_version '76' (do NOT flag as a mismatch). "
+                "Treat admission_reason 'N' as matching 'Notfall'. "
+                "Accept 4384,9 and 4384.9 as equivalent base_rate formats. "
                 "If mismatches exist, output a JSON of fixes wrapped in [[[FIX_ACTIONS]]] ... [[[END]]], with format:\n"
                 "[[[FIX_ACTIONS]]]\n"
                 "{\n"
@@ -172,14 +175,14 @@ async def run_agent_for_coords(agent: ComputerAgent, messages: List[Dict[str, An
     return coords
 
 
-async def run_macro(computer: Computer, data: Dict[str, Any], coords: Dict[str, Any], delay: float, use_tab_walk: bool) -> None:
+async def run_macro(computer: Computer, data: Dict[str, Any], coords: Dict[str, Any], delay: float, use_tab_walk: bool, recorder: Optional[List[Dict[str, Any]]] = None) -> None:
     iface = computer._interface  # type: ignore[attr-defined]
     if iface is None:
         raise RuntimeError("Computer interface not initialized.")
-    await apply_fill(computer, data, coords, delay, use_tab_walk)
+    await apply_fill(computer, data, coords, delay, use_tab_walk, recorder)
 
 
-async def apply_fill(computer: Computer, data: Dict[str, Any], coords: Dict[str, Any], delay: float, use_tab_walk: bool) -> None:
+async def apply_fill(computer: Computer, data: Dict[str, Any], coords: Dict[str, Any], delay: float, use_tab_walk: bool, recorder: Optional[List[Dict[str, Any]]] = None) -> None:
     iface = computer._interface  # type: ignore[attr-defined]
     if iface is None:
         raise RuntimeError("Computer interface not initialized.")
@@ -195,32 +198,36 @@ async def apply_fill(computer: Computer, data: Dict[str, Any], coords: Dict[str,
                 return f
         return None
 
-    async def click_and_type(x: int, y: int, text: str) -> None:
+    async def clear_field() -> None:
+        await iface.press("ctrl+a")
+        await asyncio.sleep(delay * 0.2)
+        for _ in range(10):
+            await iface.press("backspace")
+            await asyncio.sleep(delay * 0.05)
+        for _ in range(10):
+            await iface.press("delete")
+            await asyncio.sleep(delay * 0.05)
+
+    async def click_and_type(x: int, y: int, text: str, action: Optional[Dict[str, Any]] = None) -> None:
         await iface.left_click(int(x), int(y))
         await asyncio.sleep(delay)
-        await iface.press("ctrl+a")
-        await asyncio.sleep(delay * 0.5)
-        await iface.press("backspace")
-        await asyncio.sleep(delay * 0.2)
-        await iface.press("delete")
-        await asyncio.sleep(delay * 0.2)
+        await clear_field()
         if text:
             await iface.type_text(text)
         await asyncio.sleep(delay)
+        if recorder is not None and action is not None:
+            recorder.append(action)
 
-    async def type_in_place(text: str) -> None:
-        await iface.press("ctrl+a")
-        await asyncio.sleep(delay * 0.5)
-        await iface.press("backspace")
-        await asyncio.sleep(delay * 0.2)
-        await iface.press("delete")
-        await asyncio.sleep(delay * 0.2)
+    async def type_in_place(text: str, action: Optional[Dict[str, Any]] = None) -> None:
+        await clear_field()
         if text:
             await iface.type_text(text)
         await asyncio.sleep(delay)
+        if recorder is not None and action is not None:
+            recorder.append(action)
 
-    # Fill scalar fields: either tab-walk starting from gender or per-field coords
-    scalar_keys = [
+    # Fill scalar fields: tab-walk top row fields, then use coords for base_rate/drg_version
+    scalar_tab_keys = [
         "gender",
         "age",
         "age_type",
@@ -231,89 +238,85 @@ async def apply_fill(computer: Computer, data: Dict[str, Any], coords: Dict[str,
         "admission_type",
         "admission_reason",
         "discharge_type",
-        "base_rate",
-        "drg_version",
     ]
+    scalar_coord_keys = ["base_rate", "drg_version"]
     start = get_coord("gender")
     if use_tab_walk and start:
         # Seed on gender first
         gender_txt = fmt_value(data.get("gender", ""))
         print(f"[macro] gender (seed) -> ({start['x']},{start['y']}) '{gender_txt}'")
-        await click_and_type(int(start["x"]), int(start["y"]), gender_txt)
+        await click_and_type(int(start["x"]), int(start["y"]), gender_txt, {"op": "field", "key": "gender"})
         # Confirm the dropdown value, then move forward
         await iface.press("enter")
         await asyncio.sleep(delay)
         await iface.press("tab")
         await asyncio.sleep(delay)
         # Then tab-walk the remaining scalar fields (exclude gender)
-        for key in scalar_keys[1:]:
+        for key in scalar_tab_keys[1:]:
             txt = fmt_value(data.get(key, ""))
             print(f"[macro] {key} (tab-walk) -> '{txt}'")
-            await iface.press("ctrl+a")
-            await asyncio.sleep(delay * 0.5)
-            await iface.press("backspace")
-            await asyncio.sleep(delay * 0.2)
-            await iface.press("delete")
-            await asyncio.sleep(delay * 0.2)
+            await clear_field()
             if txt:
                 await iface.type_text(txt)
             await asyncio.sleep(delay)
             await iface.press("tab")
             await asyncio.sleep(delay)
+            if recorder is not None:
+                recorder.append({"op": "field", "key": key})
+        # Fill base_rate/drg_version by coord to avoid tab-walk drift
+        for key in scalar_coord_keys:
+            c = get_coord(key)
+            if not c:
+                print(f"[macro] missing coord for {key}, skipping")
+                continue
+            txt = fmt_value(data.get(key, ""))
+            print(f"[macro] {key} (coord) -> ({c['x']},{c['y']}) '{txt}'")
+            await click_and_type(int(c["x"]), int(c["y"]), txt, {"op": "field", "key": key})
     else:
         # Per-field coords
-        for key in scalar_keys:
+        for key in scalar_tab_keys + scalar_coord_keys:
             c = get_coord(key)
             if not c:
                 print(f"[macro] missing coord for {key}, skipping")
                 continue
             txt = fmt_value(data.get(key, ""))
             print(f"[macro] {key} -> ({c['x']},{c['y']}) '{txt}'")
-            await click_and_type(int(c["x"]), int(c["y"]), txt)
+            await click_and_type(int(c["x"]), int(c["y"]), txt, {"op": "field", "key": key})
 
-    # Diagnoses: tab-walk through diagnosis cells if available
+    # Diagnoses: click each cell directly (no tab-walk)
     diags = data.get("diagnoses", [])
     if diag_cells:
-        # click first cell
-        await iface.left_click(int(diag_cells[0]["x"]), int(diag_cells[0]["y"]))
-        await asyncio.sleep(delay)
         for i, d in enumerate(diags):
             if i >= len(diag_cells):
                 print(f"[macro] no coord for diagnoses[{i}], skipping")
                 break
             txt = fmt_value(d)
-            print(f"[macro] diagnoses[{i}] (tab) -> '{txt}'")
-            await type_in_place(txt)
-            await iface.press("tab")
-            await asyncio.sleep(delay)
+            cell = diag_cells[i]
+            print(f"[macro] diagnoses[{i}] -> ({cell['x']},{cell['y']}) '{txt}'")
+            await click_and_type(int(cell["x"]), int(cell["y"]), txt, {"op": "diagnosis", "index": i})
     else:
         print("[macro] no diagnosis_cells; skipping diagnoses")
 
-    # Procedures with dates: tab-walk rows if available
+    # Procedures with dates: click code cell, type, then Tab to date field (it appears after code)
     procs = data.get("procedures", [])
     dates = data.get("procedure_dates", [])
     if proc_rows and procs:
-        # click first code cell
-        first_code = proc_rows[0].get("code")
-        if first_code:
-            await iface.left_click(int(first_code["x"]), int(first_code["y"]))
-            await asyncio.sleep(delay)
-            for i, p in enumerate(procs):
-                if i >= len(proc_rows):
-                    print(f"[macro] no coord for procedures[{i}], skipping")
-                    break
-                p_txt = fmt_value(p)
-                d_txt = fmt_value(dates[i]) if i < len(dates) else ""
-                print(f"[macro] procedures[{i}] code (tab) -> '{p_txt}'")
-                await type_in_place(p_txt)
-                await iface.press("tab")
-                await asyncio.sleep(delay)
+        for i, p in enumerate(procs):
+            if i >= len(proc_rows):
+                print(f"[macro] no coord for procedures[{i}], skipping")
+                break
+            row = proc_rows[i]
+            code_cell = row.get("code")
+            p_txt = fmt_value(p)
+            d_txt = fmt_value(dates[i]) if i < len(dates) else ""
+            if code_cell:
+                print(f"[macro] procedures[{i}] code -> ({code_cell['x']},{code_cell['y']}) '{p_txt}'")
+                await click_and_type(int(code_cell["x"]), int(code_cell["y"]), p_txt, {"op": "procedure_code", "index": i})
+            if d_txt:
                 print(f"[macro] procedures[{i}] date (tab) -> '{d_txt}'")
-                await type_in_place(d_txt)
                 await iface.press("tab")
                 await asyncio.sleep(delay)
-        else:
-            print("[macro] first procedure code coord missing; skipping procedures")
+                await type_in_place(d_txt, {"op": "procedure_date", "index": i})
     else:
         print("[macro] no procedure_rows; skipping procedures")
 
@@ -337,27 +340,23 @@ async def apply_fixes(computer: Computer, data: Dict[str, Any], coords: Dict[str
                 return f
         return None
 
+    async def clear_field() -> None:
+        await iface.press("ctrl+a")
+        await asyncio.sleep(delay * 0.2)
+        for _ in range(10):
+            await iface.press("backspace")
+            await asyncio.sleep(delay * 0.05)
+        for _ in range(10):
+            await iface.press("delete")
+            await asyncio.sleep(delay * 0.05)
+
     async def click_and_type(x: int, y: int, text: str) -> None:
         await iface.left_click(int(x), int(y))
         await asyncio.sleep(delay)
-        await iface.press("ctrl+a")
-        await asyncio.sleep(delay * 0.5)
-        await iface.press("backspace")
-        await asyncio.sleep(delay * 0.2)
-        await iface.press("delete")
-        await asyncio.sleep(delay * 0.2)
+        await clear_field()
         if text:
             await iface.type_text(text)
         await asyncio.sleep(delay)
-
-    # Fix scalar fields
-    for f in fixes.get("fields", []):
-        key = f.get("key")
-        value = f.get("value", "")
-        c = get_coord(key) if key else None
-        if c:
-            print(f"[fix] field {key} -> ({c['x']},{c['y']}) '{value}'")
-            await click_and_type(int(c["x"]), int(c["y"]), value)
 
     # Fix diagnoses
     for dfix in fixes.get("diagnoses", []):
@@ -384,9 +383,18 @@ async def apply_fixes(computer: Computer, data: Dict[str, Any], coords: Dict[str
         if code_cell:
             print(f"[fix] procedures[{idx}] code -> ({code_cell['x']},{code_cell['y']}) '{code}'")
             await click_and_type(int(code_cell["x"]), int(code_cell["y"]), code)
-        if date_cell and date:
+        if date_cell is not None:
             print(f"[fix] procedures[{idx}] date -> ({date_cell['x']},{date_cell['y']}) '{date}'")
             await click_and_type(int(date_cell["x"]), int(date_cell["y"]), date)
+
+    # Fix scalar fields
+    for f in fixes.get("fields", []):
+        key = f.get("key")
+        value = f.get("value", "")
+        c = get_coord(key) if key else None
+        if c:
+            print(f"[fix] field {key} -> ({c['x']},{c['y']}) '{value}'")
+            await click_and_type(int(c["x"]), int(c["y"]), value)
 
     print("[fix] done.")
 
@@ -459,7 +467,8 @@ async def main_async(args: argparse.Namespace) -> None:
         print(f"[runner] saved coords to {args.coords_out}")
 
         # Macro execution
-        await run_macro(computer, payload, coords, args.delay, args.tab_walk)
+        macro_actions: List[Dict[str, Any]] = []
+        await run_macro(computer, payload, coords, args.delay, args.tab_walk, macro_actions)
 
         # Verification agent (optional)
         if args.verify_steps > 0:
@@ -494,6 +503,12 @@ async def main_async(args: argparse.Namespace) -> None:
                 await submit_if_present(computer, coords, args.delay)
         else:
             print("[runner] verification skipped.")
+
+        # Save recorded macro actions (high-level) for reuse
+        macro_out = args.coords_out.replace(".json", "_actions.json")
+        with open(macro_out, "w", encoding="utf-8") as f:
+            json.dump({"actions": macro_actions}, f, indent=2)
+        print(f"[runner] saved macro actions to {macro_out}")
 
 
 def main() -> int:
