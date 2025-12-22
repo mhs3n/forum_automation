@@ -6,6 +6,17 @@ from pathlib import Path
 from typing import Optional
 
 
+def _decode_env_bytes(raw: bytes) -> str:
+    """Decode .env bytes with a few common encodings."""
+    for enc in ("utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "utf-8"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    # Fallback: replace errors to avoid hard failure
+    return raw.decode("utf-8", errors="replace")
+
+
 def load_env_file(path: Path) -> bool:
     """Load environment variables from a file.
 
@@ -19,14 +30,16 @@ def load_env_file(path: Path) -> bool:
         return False
 
     print(f"Loading environment from {path}")
-    with open(path, "r") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-
-            key, value = line.split("=", 1)
-            os.environ[key] = value
+    raw = path.read_bytes()
+    text = _decode_env_bytes(raw)
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ[key] = value
 
     return True
 
@@ -36,8 +49,8 @@ def load_dotenv_files():
 
     Tries to load from .env.local first, then .env if .env.local doesn't exist.
     """
-    # Get the project root directory (parent of the examples directory)
-    project_root = Path(__file__).parent.parent
+    # Get the project root directory (this file lives in the repo root)
+    project_root = Path(__file__).parent
 
     # Try loading .env.local first, then .env if .env.local doesn't exist
     env_local_path = project_root / ".env.local"

@@ -1,177 +1,109 @@
-# CUA Form-Fill Workflow (Opus 4.5)
+# CUA + PMC Automation Toolkit
 
-This repo now focuses on a single flow: use Claude Opus 4.5 with CUA’s computer interface to extract screen coordinates, run a deterministic macro to fill the DRG Webgrouper form, and (optionally) verify/fix before submitting.
+This repo provides building blocks to alternate between:
+- CUA LLM steps (visual navigation in a desktop UI)
+- PMC macros (deterministic clicks/typing recorded on Windows)
 
-## What’s included
-- `flow_utils.py` – reusable helpers: run an LLM task, record raw actions, replay actions.
-- `scripts/llm_coord_macro_onepass.py` – one-pass pipeline (builder → macro fill → verify/fix → submit).
-- `scripts/llm_macro_builder.py` – builder-only (extract coords JSON).
-- `scripts/coord_macro_runner.py` – deterministic filler using coords + payload JSON.
-- `scripts/llm_record_run.py` – LLM task runner + macro recorder (saves LLM macro + raw actions).
-- `scripts/replay_actions_raw.py` – replay raw computer_call actions (supports wait + masked creds).
-- `data/payload.json` – sample input payload.
+The included example flow:
+1) LLM opens a Google Sheet in the CUA desktop
+2) PMC runs one or two macros to fill content
+3) Optional LLM step to fill diagnoses/procedures
 
-Legacy example files were removed; `main.py` remains untouched (not used in this flow).
+## Repo structure
+- `flow_utils.py`: LLM run helper + raw action replay
+- `pmc_utils.py`: PMC launcher helpers (autoplay, kill, wait)
+- `llm_tasks.py`: prompt builders for LLM tasks
+- `scripts/llm_open_sheet_then_pmc.py`: example flow (LLM -> PMC -> PMC -> LLM)
+- `scripts/llm_record_run.py`: record LLM actions to JSON
+- `scripts/replay_actions_raw.py`: replay recorded LLM actions
+- `utils.py`: minimal `.env` loader
 
 ## Prereqs
-- Docker desktop running the CUA XFCE image and API on host mode (example):  
-  `docker run --rm --name cua-desktop -p 8000:8000 -p 8006:6901 local/cua-xfce:latest`
-- noVNC at `http://localhost:8006` (password `password`) for visual check.
-- `.env` with:
-  - `CUA_PROVIDER=host`
-  - `CUA_HOST=127.0.0.1`
-  - `CUA_PORT=8000`
-  - `CUA_MODEL=anthropic/claude-opus-4-5-20251101`
-  - `ANTHROPIC_API_KEY=<your key>` (BYOK)
-- Venv activated: `. .venv/bin/activate`
-- You may need a slightly higher delay for stability (default 0.35s).
+- Python 3.12 in a venv
+- Docker Desktop for the CUA desktop (Linux XFCE)
+- Pulover's Macro Creator (PMC) on Windows
+- `.env` or `.env.local` with your API key
 
-## One-pass run (recommended)
-```bash
-python scripts/llm_coord_macro_onepass.py \
-  --url "https://www.drg-research-group.de/index.php?option=com_webgrouper&view=webgrouper&Itemid=112" \
-  --data data/payload.json \
-  --coords-out data/coords_generated.json
+## Setup
+Create venv and install dependencies:
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r .\requirements.txt
+python -m pip install .\cua_som-0.1.3-py3-none-any.whl
 ```
-Behavior:
-- Builder (LLM, ≤2 screenshots): zooms to ~80%, stabilizes scroll, emits per-cell coords JSON; no filling.
-- Macro (CUA): fills using coords + payload, clears each field (Ctrl+A + backspace/delete) before typing. Tab-walk is enabled by default:
-  - Click gender, type, Enter to confirm, then Tab through remaining scalar fields.
-  - Diagnoses: click first cell, type each diagnosis, Tab between cells.
-  - Procedures: click first code cell, type code, Tab, type date, Tab to next row.
-- Submit is deferred until verify passes.
-- Verify (default 10 steps): read-only check. If mismatches, LLM returns `FIX_ACTIONS`; the script applies fixes and re-verifies once, then submits. Set `--verify-steps 0` to skip verify (no auto-submit).
+
+Set env :
+```
+CUA_PROVIDER=host
+CUA_HOST=127.0.0.1
+CUA_PORT=8000
+CUA_MODEL=anthropic/claude-opus-4-5-20251101
+ANTHROPIC_API_KEY=your_key_here
+```
+
+## CUA desktop (Docker)
+Pull and run the desktop:
+```powershell
+docker pull --platform=linux/amd64 trycua/cua-xfce:latest
+docker run --rm --name cua-desktop -p 8000:8000 -p 8006:6901 trycua/cua-xfce:latest
+```
+
+Open noVNC: `http://localhost:8006` (password `password`)
+
+## PMC tips (Windows)
+- If you want PMC to drive the CUA desktop, record the macro against the noVNC
+  window (click inside the browser canvas).
+- Keep window size and scale fixed (Windows scaling 100%, browser zoom 100%).
+- Autoplay flags can be ignored if PMC is already open. Use `--pmc-kill`.
+
+## Example flow (LLM -> PMC -> PMC -> LLM)
+This opens a sheet, runs two macros, then fills diagnoses/procedures.
+
+```powershell
+.\venv\Scripts\python .\scripts\llm_open_sheet_then_pmc.py ^
+  --pmc-file "C:\Users\souli\AppData\Roaming\MacroCreator\sheets_split.pmc" ^
+  --macro-index 1 ^
+  --macro-index-2 2 ^
+  --post-open-wait 5 ^
+  --post-macro-wait 2 ^
+  --pmc-silent ^
+  --pmc-wait ^
+  --pmc-kill ^
+  --fill-after-macros ^
+  --verbose
+```
 
 Key flags:
-- `--tab-walk / --no-tab-walk` (default tab-walk on for scalar fields).
-- `--delay` (default 0.35).
-- `--verify-steps` (default 10; set 0 to skip).
+- `--pmc-silent`: use `-sN` (autoplay + hide + close)
+- `--pmc-wait`: wait until PMC exits
+- `--pmc-kill`: close any open PMC before launching (there is an issue where pmc wont work if the app is open)
+- `--fill-after-macros`: run the second LLM fill step
 
-## Builder + manual fill (if you want to separate steps)
-1) Builder only:  
-   ```bash
-   python scripts/llm_macro_builder.py \
-     --url "https://www.drg-research-group.de/index.php?option=com_webgrouper&view=webgrouper&Itemid=112" \
-     --data data/payload.json \
-     --out data/coords_generated.json
-   ```
-2) Fill with deterministic macro:  
-   ```bash
-   python scripts/coord_macro_runner.py \
-     --data data/payload.json \
-     --coords data/coords_generated.json \
-     --delay 0.35
-   ```
-(This path skips verify/submit; run a verifier separately if needed.)
+## Building blocks for custom flows
+Use `flow_utils.run_llm_task` for LLM steps and `pmc_utils.run_pmc` for macros.
 
-## Field handling details
-- Clearing: every field is cleared before typing (Ctrl+A, backspace, delete).
-- Dropdowns: typed by default (per your preference). Gender seed confirms with Enter before tab-walk.
-- Diagnoses: direct click per cell (no tab-walk).
-- Procedures: click code cell, then Tab to the date field (the date field appears after code is filled).
-- Submit: only clicked after a clean verify (or verify skipped).
+Example pattern:
+1) `run_llm_task` to navigate
+2) `run_pmc` to replay a macro
+3) `run_llm_task` to verify/fix
+4) Repeat as needed
 
-## Troubleshooting tips
-- If coords are wrong, rerun the builder (it must keep a stable zoom/scroll).
-- If tab order differs, use `--no-tab-walk` to fill scalar fields by per-field coords.
-- If entries concatenate, raise `--delay` (e.g., `--delay 0.5`).
-- If verification cost is a concern, set `--verify-steps 0` and submit manually.
-
-## Current status
-- LLM builds the macro plan (coords/fixes). All clicks/typing are executed via the CUA computer interface.
-- Submit is gated on verification success to avoid bad runs. Use flags to tune tab-walk and delays per environment. 
-
-## Orchestrated DRG → Datalytics flow
-Use `scripts/flow_orchestrator.py` for the alternating LLM+macro flow across two sites.
-
-Env requirements (datalytics login):
-- `DATALYTICS_USER`
-- `DATALYTICS_PASS`
-
-Example:
-```bash
-python scripts/flow_orchestrator.py \
-  --drg-url "https://www.drg-research-group.de/index.php?option=com_webgrouper&view=webgrouper&Itemid=112" \
-  --drg-data data/payload.json \
-  --datalytics-url "https://datalytics.drg-pepp.de/drg-pepp-grouper/grouping" \
-  --datalytics-data data/datalytics_payload.json \
-  --builder-steps 60 \
-  --verify-steps 10 \
-  --max-fix-rounds 1 \
-  --delay 0.35
+## Recording and replaying LLM actions (Ignore this because it was done before integrating pmc)
+Record:
+```powershell
+.\venv\Scripts\python .\scripts\llm_record_run.py --task "Open site and log in"
 ```
 
-Behavior:
-- DRG: LLM maps coords (if missing), macro fills, LLM verifies → fixes → submit.
-- Datalytics: LLM logs in, macro fills, LLM verifies → fixes.
-
-If a verify step finds mismatches, you can optionally recenter the viewport before applying fixes by adding `--recenter-before-fix`.
-
-Datalytics notes:
-- The builder now clicks "Diagnose hinzufügen" / "Prozedur hinzufügen" to create enough rows before mapping.
-- The macro will click those buttons before filling so all rows exist.
-
-## Modular helpers (for custom flows)
-`flow_utils.py` exposes utilities so you can compose your own flows:
-
-- `run_llm_task(task, ...)` → returns `{ "macro": <LLM JSON>, "actions": [computer_call...] }`
-- `replay_actions(actions, delay, email, password)` → replays raw actions via CUA
-- `render_task(template, {"EMAIL": "...", "PASSWORD": "..."})` → replace placeholders
-- `save_json(path, payload)` / `load_json(path)`
-
-Example custom flow:
-```python
-import asyncio
-from flow_utils import render_task, run_llm_task, replay_actions, save_json
-
-TASK = (
-  "Click address bar, go to https://www.linkedin.com/login, sign in with <EMAIL>/<PASSWORD>, "
-  "then open Jobs. Output [[[MACRO]]] JSON."
-)
-
-async def main():
-    task = render_task(TASK, {"EMAIL": "you@example.com", "PASSWORD": "•••"})
-    result = await run_llm_task(task=task, macro_tag="MACRO", keep_screens=True, mask_text=True)
-    save_json("trajectories/macro.json", result.get("macro") or {"actions": []})
-    save_json("trajectories/actions.json", {"actions": result.get("actions") or []})
-    await replay_actions(result.get("actions") or [], delay=0.5, email="you@example.com", password="•••")
-
-asyncio.run(main())
+Replay:
+```powershell
+.\venv\Scripts\python .\scripts\replay_actions_raw.py --actions trajectories\recorded_actions.json
 ```
 
-Command-line recorder (no Ctrl+L, click-based URL entry):
-```bash
-python scripts/llm_record_run.py \
-  --email "you@example.com" \
-  --password "your-password" \
-  --mask-text \
-  --keep-screens \
-  --out trajectories/recorded_macro.json \
-  --actions-out trajectories/recorded_actions.json
-```
+## Troubleshooting
+- "Computer API Server connection lost": the CUA Docker container is not running.
+- PMC opens but macro does not run: confirm macro index and use `--pmc-kill` + `--pmc-silent`.
 
-## Datalytics recorder (LLM-run + macro capture)
-Runs a full Datalytics fill with the LLM and records:
-1) Raw computer_call actions (comprehensive replay).
-2) LLM-emitted macro JSON at the end.
-
-```bash
-python scripts/datalytics_record_run.py \
-  --data data/datalytics_payload.json \
-  --user "$DATALYTICS_USER" \
-  --password "$DATALYTICS_PASS" \
-  --mask-text \
-  --out-llm trajectories/datalytics_macro_llm.json \
-  --out-raw trajectories/datalytics_actions_raw.json
-```
-
-Replay the LLM macro with payload substitution:
-```bash
-python scripts/datalytics_macro_replay.py \
-  --macro trajectories/datalytics_macro_llm.json \
-  --data data/datalytics_payload.json \
-  --user "$DATALYTICS_USER" \
-  --password "$DATALYTICS_PASS" \
-  --auto-clear \
-  --delay 0.5
-```
+## Working on adaptations
+For testing and adaptation, create a sub-branch from this branch and work there.

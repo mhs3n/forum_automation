@@ -83,6 +83,7 @@ async def run_llm_task(
     mask_text: bool = False,
     only_n_most_recent_images: int = 3,
     max_trajectory_budget: float = 10.0,
+    verbose: bool = False,
 ) -> Dict[str, Any]:
     """Run an LLM task and capture macro block + raw actions."""
     model, host, port = load_env_defaults()
@@ -91,7 +92,7 @@ async def run_llm_task(
     macro: Optional[Dict[str, Any]] = None
     raw_actions: List[Dict[str, Any]] = []
 
-    async with Computer(os_type="linux", use_host_computer_server=True, host=host, port=port) as computer:
+    async with Computer(os_type="linux", use_host_computer_server=True, host=host, api_port=port) as computer:
         agent = ComputerAgent(
             model=model,
             tools=[computer],
@@ -101,6 +102,8 @@ async def run_llm_task(
 
         async for result in agent.run(messages, stream=False):
             steps += 1
+            if verbose:
+                print(f"[llm] step {steps}")
             for item in result.get("output", []):
                 if item.get("type") == "message" and macro_tag:
                     for part in item.get("content", []):
@@ -131,7 +134,7 @@ async def replay_actions(
 ) -> None:
     """Replay raw actions via the CUA interface."""
     model, host, port = load_env_defaults()
-    async with Computer(os_type="linux", use_host_computer_server=True, host=host, port=port) as computer:
+    async with Computer(os_type="linux", use_host_computer_server=True, host=host, api_port=port) as computer:
         iface = computer._interface  # type: ignore[attr-defined]
         if iface is None:
             raise RuntimeError("Computer interface not initialized.")
