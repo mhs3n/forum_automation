@@ -81,6 +81,49 @@ Key flags:
 - `--pmc-kill`: close any open PMC before launching (there is an issue where pmc wont work if the app is open)
 - `--fill-after-macros`: run the second LLM fill step
 
+## PMC -> LLM Wordle test (host Windows)
+Record a PMC macro that navigates to Wordle, then let the LLM solve it:
+```powershell
+.\venv\Scripts\python .\scripts\pmc_wordle_then_llm.py ^
+  --pmc-file "C:\Users\Administrator\Desktop\wordle.pmc" ^
+  --pmc-index 1 ^
+  --pmc-wait ^
+  --pmc-kill
+```
+Press `F12` to stop everything.
+
+### Wordle test quickstart
+Prereqs:
+- Python venv with dependencies installed.
+- CUA computer server running on this Windows host.
+- Pulover's Macro Creator (PMC) with a macro that opens Wordle.
+
+Install deps (includes the F12 hotkey support):
+```powershell
+.\venv\Scripts\pip.exe install -r .\requirements.txt
+```
+
+Start the host computer server:
+```powershell
+.\venv\Scripts\python -m computer_server.main --host 127.0.0.1 --port 8000 --os windows
+```
+
+Run the flow:
+```powershell
+.\venv\Scripts\python .\scripts\pmc_wordle_then_llm.py ^
+  --pmc-file "C:\Users\Administrator\Desktop\wordle.pmc" ^
+  --pmc-index 1 ^
+  --pmc-wait ^
+  --pmc-kill ^
+  --log-actions
+```
+
+Notes:
+- Press `F12` to stop the flow and regain control.
+- The LLM types full guesses and presses Enter (no on-screen tile clicking).
+- Screen resolution and scaling affect CUA reliability. If clicks look off or are slow,
+  reduce resolution, keep Windows scaling at 100%, and avoid resizing the target window.
+
 ## Building blocks for custom flows
 Use `flow_utils.run_llm_task` for LLM steps and `pmc_utils.run_pmc` for macros.
 
@@ -89,6 +132,18 @@ Example pattern:
 2) `run_pmc` to replay a macro
 3) `run_llm_task` to verify/fix
 4) Repeat as needed
+
+### Crafting your own flow
+Use `scripts/pmc_wordle_then_llm.py` as a template. It supports:
+- `--steps pmc,llm,pmc,llm` to alternate between PMC and LLM steps.
+- `--pmc-indices 1,2` to run different macros for each PMC step.
+- `--log-actions` and `--log-messages` to see what the LLM is doing.
+
+To build a new flow:
+1) Create your PMC macros for deterministic navigation or form filling.
+2) Add a new LLM task prompt in `llm_tasks.py`.
+3) Wire the steps in a new script under `scripts/`, calling `run_llm_task` and `run_pmc_step`.
+4) Keep screen resolution and scaling stable to maximize CUA accuracy.
 
 ## Recording and replaying LLM actions (Ignore this because it was done before integrating pmc)
 Record:

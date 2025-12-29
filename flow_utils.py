@@ -84,15 +84,26 @@ async def run_llm_task(
     only_n_most_recent_images: int = 3,
     max_trajectory_budget: float = 10.0,
     verbose: bool = False,
+    log_actions: bool = False,
+    log_messages: bool = False,
+    stop_event: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Run an LLM task and capture macro block + raw actions."""
+    if stop_event is not None and getattr(stop_event, "is_set", lambda: False)():
+        return {"macro": None, "actions": [], "stopped": True}
     model, host, port = load_env_defaults()
     messages = [{"role": "user", "content": task}]
     steps = 0
     macro: Optional[Dict[str, Any]] = None
     raw_actions: List[Dict[str, Any]] = []
+    stopped = False
 
-    async with Computer(os_type="linux", use_host_computer_server=True, host=host, api_port=port) as computer:
+    async with Computer(
+        os_type="windows",
+        use_host_computer_server=True,
+        api_host=host,
+        api_port=port,
+    ) as computer:
         agent = ComputerAgent(
             model=model,
             tools=[computer],
@@ -101,6 +112,9 @@ async def run_llm_task(
         )
 
         async for result in agent.run(messages, stream=False):
+            if stop_event is not None and getattr(stop_event, "is_set", lambda: False)():
+                stopped = True
+                break
             steps += 1
             if verbose:
                 print(f"[llm] step {steps}")
@@ -108,22 +122,46 @@ async def run_llm_task(
                 if item.get("type") == "message" and macro_tag:
                     for part in item.get("content", []):
                         txt = part.get("text")
+                        if txt and log_messages:
+                            print(f"[llm] message: {txt}")
                         if txt:
                             maybe = extract_block(txt, macro_tag)
                             if maybe:
                                 macro = maybe
+                elif item.get("type") == "message" and log_messages and not macro_tag:
+                    for part in item.get("content", []):
+                        txt = part.get("text")
+                        if txt:
+                            print(f"[llm] message: {txt}")
                 elif item.get("type") == "computer_call":
                     action = item.get("action", {})
                     if mask_text:
                         action = mask_actions([action])[0]
                     raw_actions.append(action)
+                    if log_actions:
+                        op = action.get("type") or action.get("action") or action.get("op")
+                        if op in ("click", "left_click"):
+                            x = action.get("x")
+                            y = action.get("y")
+                            print(f"[llm] action: click ({x},{y})")
+                        elif op in ("type", "type_text"):
+                            txt = action.get("text", "")
+                            print(f"[llm] action: type '{txt}'")
+                        elif op in ("keypress", "press"):
+                            keys = action.get("keys") or action.get("key") or []
+                            print(f"[llm] action: press {keys}")
+                        elif op == "wait":
+                            secs = action.get("seconds", "")
+                            print(f"[llm] action: wait {secs}")
+                        else:
+                            print(f"[llm] action: {op}")
             if macro:
                 break
             if steps >= max_steps:
                 break
 
     raw_actions = filter_actions(raw_actions, keep_screens)
-    return {"macro": macro, "actions": raw_actions}
+    return {"macro": macro, "actions": raw_actions, "stopped": stopped}
 
 
 async def replay_actions(
@@ -131,15 +169,23 @@ async def replay_actions(
     delay: float = 0.35,
     email: Optional[str] = None,
     password: Optional[str] = None,
+    stop_event: Optional[Any] = None,
 ) -> None:
     """Replay raw actions via the CUA interface."""
     model, host, port = load_env_defaults()
-    async with Computer(os_type="linux", use_host_computer_server=True, host=host, api_port=port) as computer:
+    async with Computer(
+        os_type="windows",
+        use_host_computer_server=True,
+        api_host=host,
+        api_port=port,
+    ) as computer:
         iface = computer._interface  # type: ignore[attr-defined]
         if iface is None:
             raise RuntimeError("Computer interface not initialized.")
 
         for act in actions:
+            if stop_event is not None and getattr(stop_event, "is_set", lambda: False)():
+                break
             op = act.get("type") or act.get("action") or act.get("op")
             if op in ("click", "left_click"):
                 x = act.get("x")

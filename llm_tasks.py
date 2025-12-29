@@ -26,3 +26,14 @@ def build_fill_task(diagnoses: list[str], procedures: list[str], procedure_dates
         f"{list(zip(procedures, procedure_dates))}\n"
         "When finished, respond with DONE."
     )
+
+
+def build_wordle_solve_task() -> str:
+    return (
+        "You are on Wordle in a browser on Windows.\n"
+        "If a modal or instructions appear, close them.\n"
+        "Solve today's Wordle using the on-screen grid.\n"
+        "Type full 5-letter guesses with the keyboard and press Enter to submit.\n"
+        "Do NOT click the on-screen letter tiles for input.\n"
+        "After submitting the final guess (win or lose), respond with DONE."
+    )

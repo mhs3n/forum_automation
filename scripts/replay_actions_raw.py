@@ -31,7 +31,12 @@ async def replay(actions: List[Dict[str, Any]], delay: float, email: str = None,
     load_dotenv_files()
     host = os.getenv("CUA_HOST", "127.0.0.1")
     port = int(os.getenv("CUA_PORT", "8000"))
-    async with Computer(os_type="linux", use_host_computer_server=True, host=host, api_port=port) as computer:
+    async with Computer(
+        os_type="windows",
+        use_host_computer_server=True,
+        api_host=host,
+        api_port=port,
+    ) as computer:
         iface = computer._interface  # type: ignore[attr-defined]
         if iface is None:
             raise RuntimeError("Computer interface not initialized.")
